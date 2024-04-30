@@ -1,0 +1,91 @@
+---
+title: "Time Series Assignment: ARIMA Modeling"
+author: "Kamil Stos & [Your Name]"
+output: pdf_document
+---
+
+## Introduction
+
+In this project, we model the Index of Industrial Production (IPI) for the alimentary industry using ARIMA models. This approach helps in understanding and forecasting industry trends. Data for the analysis is sourced from the INSEE database for the alimentary industry sector, which is seasonally adjusted to avoid variations that could affect the analysis. The dataset is available at [INSEE - IPI: Industrie Alimentaire](https://www.insee.fr/fr/statistiques/serie/010767602#Revision).
+
+## Data Overview
+
+### Dataset Description
+
+The dataset spans from 2010 to the present with monthly observations. It represents the Industrial Production Index (IPI), which is adjusted for seasonal variations and normalized to 100 for the year 2021. The initial exploration suggests the presence of trends and possible non-stationarity, which we will address in the analysis.
+
+```{r setup, include=FALSE}
+library(forecast)
+library(tseries)
+library(ggplot2)
+```
+
+
+```{r}
+library(forecast)
+library(tseries)
+library(ggplot2)
+
+# Load the data
+data <- read.csv("data_industrie_alimentaire.csv", header = TRUE, sep = ";")
+colnames(data) <- c("date", "index1", "useless1", "index2", "useless2")
+data <- data[, c("date", "index1", "index2")]
+data <- data[-c(1:3),]  # Remove first 3 rows
+data$index1 <- as.numeric(data$index1)
+head(data)
+
+
+# Part I
+
+# Convert the index to a time series object
+data_ts <- ts(data$index1, start = c(2010, 1), frequency = 12)
+plot(data_ts, main = "Initial Time Series Plot", xlab = "Time", ylab = "Index")
+
+# we can see that the time series is not stationary
+# we can use the Augmented Dickey-Fuller test to check if the time series is stationary
+adf.test(data_ts)
+
+# the p-value is 0.5 which is greater than 0.05, so we can't reject the null hypothesis at the 5% significance level (not even close)
+
+# we can try to difference the time series
+data_ts_diff <- diff(data_ts)
+
+# plot the differenced time series
+plot(data_ts_diff, main = "Differenced Index", xlab = "Time", ylab = "Index", col = "blue", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
+
+adf.test(data_ts_diff)
+# p-value is less than 0.01 so we can reject the null hypothesis at the 1% significance level : the time series is possibly stationary
+
+# check for heteroskedasticity
+Box.test(data_ts_diff, lag = 20, type = "Ljung-Box")
+
+# p-value is greater than 2*10^-8 so we can't reject the null hypothesis at the 5% significance level : the time series is homoskedastic
+
+
+# Part II
+
+# checking the ACF and PACF
+par(mfrow = c(1, 2))
+acf(data_ts_diff, main = "ACF of the differenced time series")
+pacf(data_ts_diff, main = "PACF of the differenced time series")
+
+# fit an ARMA(p,q) model to the differenced time series since it's stationary
+# we can try to fit an ARIMA model to the time series
+fit <- auto.arima(data_ts_diff)
+# show the model
+summary(fit)
+
+# show the residuals
+checkresiduals(fit)
+
+# p-value is greater than 0.05 so we can't reject the null hypothesis at the 5% significance level : the residuals are white noise
+
+forecast <- forecast(fit, h = 12)  # Forecasting 12 months ahead
+plot(forecast, main = "Forecast with 95% Confidence Intervals")
+
+```
+
+
+## analysis of the acf and pacf
+
+ACF (Autocorrelation Function) Plot: The autocorrelations rapidly decline after the first few lags and cross into the confidence interval fairly quickly. This suggests that the differenced time series may not need many MA (moving average) terms, if any. The fact that the ACF tails off suggests the series may have an MA component, but given that it does so within the significance bounds, it might not be substantial. PACF (Partial Autocorrelation Function) Plot: The partial autocorrelations cut off after the first lag, indicating a potential AR (autoregressive) term of order 1. However, there are a few other spikes that are significant (crossing the confidence bounds), which might suggest a higher-order AR process or possibly some seasonality that hasn't been fully accounted for by differencing alone. Based on this initial analysis, we could tentatively suggest an ARIMA model with 1 AR term and possibly 0 MA terms (ARIMA(1,1,0)). However, there are several additional lags in the PACF that are statistically significant, which could imply an AR process of higher order, or these could be seasonal effects. To improve upon this analysis: Seasonality Check: We should ensure that the time series has been checked for seasonality. Given the nature of the data (industrial production), there may be underlying seasonal patterns that haven't been captured by a simple differencing. If seasonality is detected, a seasonal ARIMA (SARIMA) model may be more appropriate. Extended Lag Analysis: It would be prudent to examine the ACF and PACF plots over a larger number of lags. Sometimes, significant correlations at higher lags can suggest additional AR or MA terms that aren't immediately apparent.\n Model Comparison: We can fit several ARIMA models with different combinations of AR and MA terms and compare them using AIC (Akaike Information Criterion) or BIC (Bayesian Information Criterion) values to choose the best fitting model. Residual Analysis: After fitting the proposed ARIMA(1,1,0) model, we should conduct a thorough analysis of the residuals to confirm that they resemble white noise (no autocorrelation, constant variance, and normally distributed). External Factors: We might also want to consider external regressors that could be impacting the IPI. This could transition the model into an ARIMAX or SARIMAX if seasonality or exogenous variables are included.
